@@ -123,7 +123,8 @@ class Trail:
                 except json.JSONDecodeError:
                     continue
 
-                if content_id and not entry.get("content_id", "").startswith(content_id):
+                entry_cid = entry.get("content_id", "")
+                if content_id and entry_cid != content_id and not (content_id.endswith(":") and entry_cid.startswith(content_id)):
                     continue
                 if action_set and entry.get("action") not in action_set:
                     continue

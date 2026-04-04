@@ -107,21 +107,21 @@ import { Trail } from "./trail";
 const trail = new Trail("./data");
 
 // Log an event
-trail.append("civitai:image:12345", "posted", "daily-post", {
+await trail.append("civitai:image:12345", "posted", "daily-post", {
   details: { platform: "telegram", platform_id: "42" },
   trace_id: "run-001",
 });
 
 // Query the trail
-const { entries, total } = trail.query({ content_id: "civitai:image:12345" });
+const { entries, total } = await trail.query({ content_id: "civitai:image:12345" });
 
 // Check if already posted
-if (trail.isUsed("civitai:image:12345")) {
+if (await trail.isUsed("civitai:image:12345")) {
   console.log("Already posted, skipping");
 }
 
 // Get pipeline stats
-const stats = trail.stats("daily-post");
+const stats = await trail.stats("daily-post");
 console.log(`Posted: ${stats.by_action.posted ?? 0}`);
 ```
 

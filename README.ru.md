@@ -107,21 +107,21 @@ import { Trail } from "./trail";
 const trail = new Trail("./data");
 
 // Залогировать событие
-trail.append("civitai:image:12345", "posted", "daily-post", {
+await trail.append("civitai:image:12345", "posted", "daily-post", {
   details: { platform: "telegram", platform_id: "42" },
   trace_id: "run-001",
 });
 
 // Запросить лог
-const { entries, total } = trail.query({ content_id: "civitai:image:12345" });
+const { entries, total } = await trail.query({ content_id: "civitai:image:12345" });
 
 // Проверить, уже опубликовано?
-if (trail.isUsed("civitai:image:12345")) {
-  console.log("Уже опубликовано, пропускаем");
+if (await trail.isUsed("civitai:image:12345")) {
+  console.log("Уже опубликовано, пропускае��");
 }
 
 // Статистика пайплайна
-const stats = trail.stats("daily-post");
+const stats = await trail.stats("daily-post");
 console.log(`Опубликовано: ${stats.by_action.posted ?? 0}`);
 ```
 

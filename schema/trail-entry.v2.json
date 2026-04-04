@@ -8,8 +8,8 @@
   "properties": {
     "version": {
       "type": "integer",
-      "const": 2,
-      "description": "Protocol version. Always 2 for this schema."
+      "minimum": 2,
+      "description": "Protocol version. Parsers MUST accept entries with version >= 2, extracting known fields and ignoring unknown ones."
     },
     "timestamp": {
       "type": "string",
@@ -253,5 +253,5 @@
       "examples": [["nsfw", "priority:high", "batch:2026-04-05"]]
     }
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

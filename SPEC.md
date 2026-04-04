@@ -47,6 +47,8 @@ The MCP specification intentionally does not address server-to-server communicat
 <mcp-server-root>/data/trail.jsonl
 ```
 
+- **Default path:** `data/trail.jsonl` relative to the MCP server root
+- **Override:** Servers MAY allow overriding via `TRAIL_PATH` environment variable or constructor parameter. When set, the value is used as the full path to the JSONL file.
 - **Format:** JSONL (JSON Lines) — one JSON object per line, UTF-8, `\n` line endings
 - **Write mode:** Append-only
 - **Concurrency:** Serialize writes (mutex/lock). Reads are lock-free.
@@ -348,7 +350,7 @@ Query the trail log with filters.
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `content_id` | `string` | — | Filter by content ID. Exact match or prefix (e.g., `civitai:image:` matches all Civitai images). |
+| `content_id` | `string` | — | Filter by content ID. Exact match, or prefix ending with `:` (e.g., `civitai:image:` matches all Civitai images, but `civitai:image:1` matches only that exact ID). |
 | `action` | `string` | — | Filter by action. |
 | `requester` | `string` | — | Filter by requester. |
 | `trace_id` | `string` | — | Filter by trace ID. |
@@ -403,7 +405,37 @@ Get summary statistics for the trail log. Useful for dashboards and health check
 
 ### Auto-Logging
 
-Publishing tools (e.g., `send_photo`, `publish_post`) SHOULD accept optional `content_id`, `requester`, and `trace_id` parameters. When provided, the tool automatically appends a `posted` entry on success, or a `failed` entry on error. This eliminates the need for a separate `mark_trail` call after every publish.
+Publishing tools (e.g., `send_photo`, `publish_post`) SHOULD accept optional TRAIL context parameters. When provided, the tool automatically appends a `posted` entry on success, or a `failed` entry on error. This eliminates the need for a separate `mark_trail` call after every publish.
+
+### Context Propagation (`_trail` parameter)
+
+To standardize how TRAIL context is passed to publishing tools, servers SHOULD accept an optional `_trail` parameter as a single object containing all trail-related fields:
+
+```json
+{
+  "tool": "send_photo",
+  "params": {
+    "photo": "https://example.com/image.jpg",
+    "chat_id": "-100123456",
+    "_trail": {
+      "content_id": "civitai:image:12345",
+      "requester": "daily-post",
+      "trace_id": "run-001",
+      "caused_by": "curator:1743861620000:1",
+      "tags": ["nsfw", "batch:2026-04-05"]
+    }
+  }
+}
+```
+
+**Convention rules:**
+
+- The `_trail` parameter is OPTIONAL. When absent, no trail entry is written.
+- The underscore prefix (`_trail`) signals that this is protocol metadata, not a tool-specific parameter.
+- `_trail.content_id` and `_trail.requester` are REQUIRED within `_trail`. `trace_id`, `caused_by`, and `tags` are optional.
+- On success, the server appends a trail entry with `action: "posted"` and includes platform-specific details automatically (e.g., `platform_id`, `url`).
+- On failure, the server appends a trail entry with `action: "failed"` and includes structured error details.
+- Servers MAY also accept `content_id`, `requester`, `trace_id` as separate top-level parameters for backward compatibility. When both `_trail` and top-level parameters are present, `_trail` takes precedence.
 
 ---
 
@@ -512,19 +544,30 @@ Servers MAY define a retention period (e.g., 90 days). Entries older than the re
 
 ### Version Field
 
-The `version` field enables forward evolution. The current version is `2`. Future versions may add checksums, compression, or binary formats.
+The `version` field enables forward evolution. The current version is `2`. Future versions may add new optional fields, new standard actions, or new encoding formats.
+
+### Spec Versioning
+
+The specification follows semantic versioning (`MAJOR.MINOR.PATCH`):
+
+- **PATCH** (e.g., 2.1.0 → 2.1.1): Typo fixes, clarifications. No schema changes.
+- **MINOR** (e.g., 2.1 → 2.2): New optional fields, new standard actions, new detail sub-fields. Always backward compatible — a v2.1 parser MUST be able to read v2.2 entries.
+- **MAJOR** (e.g., 2.x → 3.0): Breaking changes to required fields or core semantics. The `version` field in entries increments accordingly.
 
 ### Compatibility Rules
 
 - Servers MUST write entries with `version: 2` under this spec
-- Servers MUST ignore entries with unknown `version` values (forward compatibility)
-- Servers MUST ignore unknown fields in entries (extensibility)
+- Servers MUST read entries with `version` >= 2: extract known fields, ignore unknown fields, do NOT reject the entry
+- Servers MAY log a warning when encountering a `version` higher than what they implement
+- Servers MUST ignore unknown fields in entries at any level (extensibility)
 - The `details` field is always open — unknown sub-fields MUST be preserved, not stripped
+- A parser written for spec 2.x MUST correctly read any 2.y entry (where y > x)
 
 ### Deprecation Policy
 
 - Deprecated features are announced at least one minor version before removal
 - Removed features are listed in a CHANGELOG
+- A field MUST NOT be removed within the same major version once it reaches `stable` status
 
 ---
 

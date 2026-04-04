@@ -7,11 +7,11 @@
  * Usage:
  *   import { Trail } from "./trail";
  *   const trail = new Trail("./data", "my-mcp-server");
- *   trail.append("civitai:image:12345", "posted", "daily-post", { details: { platform: "telegram" } });
- *   const { entries, total } = trail.query({ content_id: "civitai:image:12345" });
+ *   await trail.append("civitai:image:12345", "posted", "daily-post", { details: { platform: "telegram" } });
+ *   const { entries, total } = await trail.query({ content_id: "civitai:image:12345" });
  */
 
-import { readFileSync, appendFileSync, mkdirSync, existsSync } from "fs";
+import { readFile, appendFile, mkdir, access } from "fs/promises";
 import { join, dirname } from "path";
 
 export interface TrailEntry {
@@ -29,7 +29,7 @@ export interface TrailEntry {
 }
 
 export interface TrailQuery {
-  /** Filter by content ID (exact match or prefix) */
+  /** Filter by content ID (exact match, or prefix ending with ':') */
   content_id?: string;
   /** Filter by action (string or array for multi-action filtering) */
   action?: string | string[];
@@ -71,31 +71,67 @@ export interface TrailStats {
   last_entry: string | null;
 }
 
+/**
+ * Async mutex for serializing writes.
+ * Ensures append-only integrity without external dependencies.
+ */
+class Mutex {
+  private _queue: Array<() => void> = [];
+  private _locked = false;
+
+  async acquire(): Promise<void> {
+    if (!this._locked) {
+      this._locked = true;
+      return;
+    }
+    return new Promise<void>((resolve) => {
+      this._queue.push(resolve);
+    });
+  }
+
+  release(): void {
+    const next = this._queue.shift();
+    if (next) {
+      next();
+    } else {
+      this._locked = false;
+    }
+  }
+}
+
+/** Check if content_id filter matches an entry's content_id.
+ *  - Exact match: "civitai:image:12345" matches "civitai:image:12345"
+ *  - Prefix match: "civitai:image:" matches "civitai:image:12345" (prefix must end with ':')
+ */
+function matchContentId(filter: string, entryId: string): boolean {
+  if (entryId === filter) return true;
+  if (filter.endsWith(":") && entryId.startsWith(filter)) return true;
+  return false;
+}
+
 export class Trail {
   private static readonly FILENAME = "trail.jsonl";
   private static readonly VERSION = 2;
   private readonly filePath: string;
   private readonly serverName?: string;
+  private readonly _mutex = new Mutex();
 
   constructor(dataDir: string, server?: string) {
     this.filePath = join(dataDir, Trail.FILENAME);
     this.serverName = server;
-    mkdirSync(dirname(this.filePath), { recursive: true });
+    mkdir(dirname(this.filePath), { recursive: true }).catch(() => {});
   }
 
   /**
    * Append an event to the trail.
-   * @param content_id Content ID in format source:type:id
-   * @param action Action — fetched, selected, posted, failed, delegated, evaluated, guarded, etc.
-   * @param requester Requester — workflow or scheduler task ID
-   * @param options Optional: details, trace_id, server, entry_id, caused_by, tags
+   * Thread-safe — serialized via async mutex.
    */
-  append(
+  async append(
     content_id: string,
     action: string,
     requester: string,
     options?: TrailAppendOptions
-  ): TrailEntry {
+  ): Promise<TrailEntry> {
     const entry: TrailEntry = {
       version: Trail.VERSION,
       timestamp: new Date().toISOString(),
@@ -111,12 +147,17 @@ export class Trail {
     if (options?.caused_by) entry.caused_by = options.caused_by;
     if (options?.tags) entry.tags = options.tags;
 
-    appendFileSync(this.filePath, JSON.stringify(entry) + "\n", "utf-8");
+    await this._mutex.acquire();
+    try {
+      await appendFile(this.filePath, JSON.stringify(entry) + "\n", "utf-8");
+    } finally {
+      this._mutex.release();
+    }
     return entry;
   }
 
   /** Query the trail with filters. Returns entries newest first + total count. */
-  query(q: TrailQuery = {}): TrailQueryResult {
+  async query(q: TrailQuery = {}): Promise<TrailQueryResult> {
     const {
       content_id,
       action,
@@ -129,21 +170,24 @@ export class Trail {
       offset = 0,
     } = q;
 
-    if (!existsSync(this.filePath)) return { entries: [], total: 0 };
+    const fileExists = await access(this.filePath)
+      .then(() => true)
+      .catch(() => false);
+    if (!fileExists) return { entries: [], total: 0 };
 
     const actionSet = action
       ? new Set(Array.isArray(action) ? action : [action])
       : null;
 
-    const lines = readFileSync(this.filePath, "utf-8")
-      .split("\n")
-      .filter(Boolean);
+    const data = await readFile(this.filePath, "utf-8");
+    const lines = data.split("\n").filter(Boolean);
     const matched: TrailEntry[] = [];
 
     for (const line of lines) {
       try {
         const entry: TrailEntry = JSON.parse(line);
-        if (content_id && !entry.content_id.startsWith(content_id)) continue;
+        if (content_id && !matchContentId(content_id, entry.content_id))
+          continue;
         if (actionSet && !actionSet.has(entry.action)) continue;
         if (requester && entry.requester !== requester) continue;
         if (trace_id && entry.trace_id !== trace_id) continue;
@@ -164,8 +208,8 @@ export class Trail {
   }
 
   /** Get summary statistics for the trail. */
-  stats(requester?: string, since?: string): TrailStats {
-    const { entries } = this.query({ requester, since, limit: 0 });
+  async stats(requester?: string, since?: string): Promise<TrailStats> {
+    const { entries } = await this.query({ requester, since, limit: 0 });
     const byAction: Record<string, number> = {};
     const cids = new Set<string>();
     const timestamps: string[] = [];
@@ -190,16 +234,23 @@ export class Trail {
   }
 
   /** Check if content was already posted. */
-  isUsed(content_id: string, requester?: string): boolean {
-    return (
-      this.query({ content_id, action: "posted", requester, limit: 1 }).entries
-        .length > 0
-    );
+  async isUsed(content_id: string, requester?: string): Promise<boolean> {
+    const { entries } = await this.query({
+      content_id,
+      action: "posted",
+      requester,
+      limit: 1,
+    });
+    return entries.length > 0;
   }
 
   /** Get set of all posted content IDs. */
-  getUsedIds(requester?: string): Set<string> {
-    const { entries } = this.query({ action: "posted", requester, limit: 0 });
+  async getUsedIds(requester?: string): Promise<Set<string>> {
+    const { entries } = await this.query({
+      action: "posted",
+      requester,
+      limit: 0,
+    });
     return new Set(entries.map((e) => e.content_id));
   }
 }
