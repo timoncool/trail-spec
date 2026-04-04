@@ -65,5 +65,5 @@
   <text x="400" y="76" text-anchor="middle" fill="#9ca3af" font-family="system-ui, -apple-system, sans-serif" font-size="13" letter-spacing="1">Tracking Records Across Isolated Logs</text>
 
   <!-- Tagline -->
-  <text x="400" y="265" text-anchor="middle" fill="#6b7280" font-family="monospace" font-size="11">cross-MCP content tracking protocol v1</text>
+  <text x="400" y="265" text-anchor="middle" fill="#6b7280" font-family="monospace" font-size="11">cross-MCP content tracking protocol</text>
 </svg>

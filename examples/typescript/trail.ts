@@ -67,27 +67,6 @@ export interface TrailStats {
   last_entry: string | null;
 }
 
-/** v1 → v2 field mapping for backward compatibility */
-const V1_MAP: Record<string, string> = {
-  v: "version",
-  t: "timestamp",
-  cid: "content_id",
-  act: "action",
-  req: "requester",
-  d: "details",
-};
-
-function normalize(raw: Record<string, unknown>): TrailEntry {
-  if ("v" in raw && !("version" in raw)) {
-    const mapped: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(raw)) {
-      mapped[V1_MAP[k] ?? k] = v;
-    }
-    return mapped as unknown as TrailEntry;
-  }
-  return raw as unknown as TrailEntry;
-}
-
 export class Trail {
   private static readonly FILENAME = "trail.jsonl";
   private static readonly VERSION = 2;
@@ -150,7 +129,7 @@ export class Trail {
 
     for (const line of lines) {
       try {
-        const entry = normalize(JSON.parse(line));
+        const entry: TrailEntry = JSON.parse(line);
         if (content_id && !entry.content_id.startsWith(content_id)) continue;
         if (action && entry.action !== action) continue;
         if (requester && entry.requester !== requester) continue;

@@ -1,12 +1,11 @@
 # TRAIL — Tracking Records Across Isolated Logs
 
-## Specification v2
+## Specification
 
 **Version:** 2.0
 **Date:** 2026-04-05
 **Status:** Draft
 **Authors:** timoncool
-**Previous:** [v1](https://github.com/timoncool/trail-spec/tree/v1)
 
 ---
 
@@ -451,35 +450,19 @@ Servers MAY define a retention period (e.g., 90 days). Entries older than the re
 
 ### Version Field
 
-The `version` field enables forward evolution:
-- **v1** (previous): flat JSONL, 5 required fields (`v`, `t`, `cid`, `act`, `req`), short names
-- **v2** (this spec): readable field names, trace correlation, causality, cost tracking, discovery, rotation
+The `version` field enables forward evolution. The current version is `2`. Future versions may add checksums, compression, or binary formats.
 
 ### Compatibility Rules
 
 - Servers MUST write entries with `version: 2` under this spec
-- Servers MUST be able to read v1 entries (map `v`→`version`, `t`→`timestamp`, `cid`→`content_id`, `act`→`action`, `req`→`requester`, `d`→`details`)
 - Servers MUST ignore entries with unknown `version` values (forward compatibility)
 - Servers MUST ignore unknown fields in entries (extensibility)
 - The `details` field is always open — unknown sub-fields MUST be preserved, not stripped
-
-### Migration from v1
-
-Existing v1 log files do NOT need to be migrated. A v2-compliant server reads both formats transparently. New entries are always written in v2 format.
-
-```python
-# v1 entry (still valid, readable by v2 servers)
-{"v":1,"t":"2026-04-05T14:07:00Z","cid":"civitai:image:12345","act":"posted","req":"daily-post"}
-
-# v2 entry (new format)
-{"version":2,"timestamp":"2026-04-05T14:07:00.123Z","content_id":"civitai:image:12345","action":"posted","requester":"daily-post"}
-```
 
 ### Deprecation Policy
 
 - Deprecated features are announced at least one minor version before removal
 - Removed features are listed in a CHANGELOG
-- Field renames include a mapping table (as above) for at least 2 major versions
 
 ---
 
@@ -542,7 +525,6 @@ This bridge is informational. A reference exporter may be provided in `examples/
 3. Add `get_trail`, `mark_trail`, and optionally `get_trail_stats` tools
 4. Add optional `content_id`, `requester`, and `trace_id` params to your publishing tools
 5. Advertise TRAIL support in your server capabilities
-6. Add v1 backward-compatible reading
 
 ### For orchestrator prompts
 
@@ -571,11 +553,8 @@ TRAIL is designed specifically for the MCP orchestrator use case where each serv
 
 ## FAQ
 
-**Q: Why did field names change from v1 (`cid`, `act`) to v2 (`content_id`, `action`)?**
-A: A protocol meant to last decades must be self-documenting. When a developer sees a trail file for the first time, `content_id` is immediately clear; `cid` requires consulting the spec. The ~15 KB/year overhead at typical rates is negligible, and gzip eliminates it entirely.
-
-**Q: Is v1 still supported?**
-A: Yes. V2 servers read v1 entries transparently by mapping field names. Existing v1 log files do not need migration.
+**Q: Why readable field names instead of short ones?**
+A: A protocol meant to last decades must be self-documenting. When a developer sees a trail file for the first time, `content_id` is immediately clear. The ~15 KB/year overhead at typical rates is negligible, and gzip eliminates it entirely.
 
 **Q: Why not a shared database?**
 A: MCP servers are isolated by design. A shared DB creates coupling, deployment complexity, and a single point of failure. The orchestrator already sees all servers — let it do the correlation.

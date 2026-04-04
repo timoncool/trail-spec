@@ -66,7 +66,6 @@ The orchestrator sees: `civitai:image:12345` → selected → posted to Telegram
 - **Auto-logging** — publishing tools log automatically when `content_id` and `requester` are passed
 - **Zero dependencies** — stdlib only, no external packages
 - **OTel-ready** — optional bridge to export entries as OpenTelemetry spans
-- **v1 backward compatible** — reads v1 logs transparently, no migration needed
 
 ## Quick Start
 
@@ -218,13 +217,6 @@ Servers advertise TRAIL support via capabilities:
 }
 ```
 
-## Migration from v1
-
-TRAIL v2 is **fully backward compatible** with v1:
-- v2 servers read v1 entries by mapping field names (`v`→`version`, `t`→`timestamp`, `cid`→`content_id`, `act`→`action`, `req`→`requester`, `d`→`details`)
-- Existing log files do NOT need migration
-- New entries are always written in v2 format
-
 ## Adopting TRAIL in Your MCP Server
 
 1. Copy [`trail.py`](examples/python/trail.py) or [`trail.ts`](examples/typescript/trail.ts) into your project
@@ -246,11 +238,8 @@ Full specification: **[SPEC.md](SPEC.md)** | **[SPEC.ru.md](SPEC.ru.md)**
 
 ## FAQ
 
-**Q: Why readable field names instead of v1's short ones (`cid`, `act`)?**
-A: A protocol for decades must be self-documenting. `content_id` is clear on first sight; `cid` requires the spec. The overhead is ~15 KB/year at typical rates — negligible.
-
-**Q: Is v1 still supported?**
-A: Yes. v2 reads v1 transparently. No migration needed.
+**Q: Why readable field names instead of short ones?**
+A: A protocol for decades must be self-documenting. `content_id` is clear on first sight. The overhead is ~15 KB/year at typical rates — negligible.
 
 **Q: Do I need all the optional fields?**
 A: No. The five required fields are the whole protocol. Optional fields unlock advanced features when you need them.

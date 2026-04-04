@@ -24,27 +24,10 @@ class Trail:
     FILENAME = "trail.jsonl"
     VERSION = 2
 
-    # v1 → v2 field mapping for backward compatibility
-    _V1_MAP = {
-        "v": "version",
-        "t": "timestamp",
-        "cid": "content_id",
-        "act": "action",
-        "req": "requester",
-        "d": "details",
-    }
-
     def __init__(self, data_dir: str | Path):
         self._path = Path(data_dir) / self.FILENAME
         self._lock = asyncio.Lock()
         self._path.parent.mkdir(parents=True, exist_ok=True)
-
-    @staticmethod
-    def _normalize(entry: dict) -> dict:
-        """Normalize a v1 entry to v2 field names."""
-        if "v" in entry and "version" not in entry:
-            return {Trail._V1_MAP.get(k, k): v for k, v in entry.items()}
-        return entry
 
     async def append(
         self,
@@ -126,7 +109,7 @@ class Trail:
                 if not line:
                     continue
                 try:
-                    entry = self._normalize(json.loads(line))
+                    entry = json.loads(line)
                 except json.JSONDecodeError:
                     continue
 
