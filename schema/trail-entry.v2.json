@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/timoncool/trail-spec/schema/trail-entry.v2.json",
+  "title": "TRAIL Entry v2",
+  "description": "A single entry in a TRAIL Protocol v2 log file (trail.jsonl)",
+  "type": "object",
+  "required": ["version", "timestamp", "content_id", "action", "requester"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 2,
+      "description": "Protocol version. Always 2 for this schema."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp in UTC with milliseconds. When the action occurred.",
+      "examples": ["2026-04-05T14:07:00.123Z"]
+    },
+    "content_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,31}:[a-z0-9][a-z0-9-]{0,31}:[^\\n:]{1,256}$",
+      "description": "Universal Content ID in format source:type:id",
+      "examples": ["civitai:image:12345", "youtube:video:dQw4w9WgXcQ"]
+    },
+    "action": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,31}$",
+      "description": "Action performed on the content.",
+      "examples": ["fetched", "selected", "posted", "failed", "skipped", "retrying", "transformed", "moderated", "expired", "delivered"]
+    },
+    "requester": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "The workflow, scheduled task, or user that initiated this action.",
+      "examples": ["daily-post", "user-request", "content-pipeline-v2"]
+    },
+    "details": {
+      "type": "object",
+      "description": "Platform-specific data. Open object with standard sub-fields.",
+      "properties": {
+        "error": {
+          "type": "object",
+          "description": "Error information for failed/retrying actions.",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["rate_limit", "auth", "validation", "network", "server", "timeout", "unknown"],
+              "description": "Error category."
+            },
+            "message": {
+              "type": "string",
+              "description": "Human-readable error description."
+            },
+            "retry_after": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Seconds until retry is allowed."
+            }
+          }
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why content was skipped or moderated."
+        },
+        "platform": {
+          "type": "string",
+          "description": "Target platform identifier.",
+          "examples": ["telegram", "facebook", "vk", "reddit", "slack"]
+        },
+        "platform_id": {
+          "type": "string",
+          "description": "ID of the created resource on the target platform."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the published content."
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Retry attempt number (1-based)."
+        },
+        "transformation": {
+          "type": "string",
+          "description": "What transformation was applied.",
+          "examples": ["resize:1024x1024", "translate:en→ru", "transcode:mp4"]
+        },
+        "result": {
+          "type": "string",
+          "enum": ["pass", "reject"],
+          "description": "Moderation result."
+        },
+        "cost": {
+          "type": "object",
+          "description": "Cost information for the action.",
+          "properties": {
+            "tokens_in": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Input tokens consumed."
+            },
+            "tokens_out": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Output tokens generated."
+            },
+            "usd": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Cost in US dollars."
+            },
+            "credits": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Platform-specific credits consumed."
+            }
+          },
+          "additionalProperties": true
+        },
+        "content": {
+          "type": "object",
+          "description": "Content metadata.",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["image", "video", "audio", "text", "document"],
+              "description": "Content type."
+            },
+            "width": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Width in pixels."
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Height in pixels."
+            },
+            "duration_sec": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Duration in seconds (video/audio)."
+            },
+            "size_bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "File size in bytes."
+            },
+            "mime_type": {
+              "type": "string",
+              "description": "MIME type.",
+              "examples": ["image/jpeg", "video/mp4", "audio/mpeg"]
+            },
+            "model": {
+              "type": "string",
+              "description": "AI model used to generate the content.",
+              "examples": ["Flux.1 [dev]", "SDXL", "Stable Diffusion 3"]
+            },
+            "title": {
+              "type": "string",
+              "description": "Content title or caption."
+            },
+            "nsfw": {
+              "type": "boolean",
+              "description": "Whether content is NSFW."
+            }
+          },
+          "additionalProperties": true
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How long the action took in milliseconds."
+        }
+      },
+      "additionalProperties": true
+    },
+    "trace_id": {
+      "type": "string",
+      "maxLength": 64,
+      "description": "Groups related entries across servers into a single trace.",
+      "examples": ["d4c5f6a7-8b9c-4d0e-a1f2-b3c4d5e6f7a8", "daily-2026-04-05-001"]
+    },
+    "entry_id": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Unique identifier for this entry.",
+      "examples": ["019576a0-7c00-7000-8000-000000000001", "telegram:1743861600123:1"]
+    },
+    "caused_by": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "entry_id of the entry that directly caused this one."
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 64
+      },
+      "description": "Free-form labels for filtering and categorization.",
+      "examples": [["nsfw", "priority:high", "batch:2026-04-05"]]
+    }
+  },
+  "additionalProperties": false
+}

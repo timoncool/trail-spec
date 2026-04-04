@@ -36,32 +36,37 @@
          trail.jsonl    trail.jsonl    trail.jsonl
 ```
 
-Каждый сервер ведёт свой `trail.jsonl` — append-only лог с единой схемой. Оркестратор читает все логи и связывает их через универсальный **Content ID** (`cid`).
+Каждый сервер ведёт свой `trail.jsonl` — append-only лог с единой схемой. Оркестратор читает все логи и связывает их через универсальный **Content ID** (`content_id`).
 
 **Один прогон пайплайна через три сервера:**
 
 ```jsonl
 # Источник trail.jsonl
-{"v":1,"t":"2026-04-05T14:07:00Z","cid":"civitai:image:12345","act":"selected","req":"daily-post"}
+{"version":2,"timestamp":"2026-04-05T14:07:00Z","content_id":"civitai:image:12345","action":"selected","requester":"daily-post","trace_id":"run-001"}
 
 # Мессенджер trail.jsonl
-{"v":1,"t":"2026-04-05T14:07:05Z","cid":"civitai:image:12345","act":"posted","req":"daily-post","d":{"message_id":42}}
+{"version":2,"timestamp":"2026-04-05T14:07:05Z","content_id":"civitai:image:12345","action":"posted","requester":"daily-post","trace_id":"run-001","details":{"platform":"telegram","platform_id":"42"}}
 
 # Соцсеть trail.jsonl
-{"v":1,"t":"2026-04-05T14:07:30Z","cid":"civitai:image:12345","act":"posted","req":"daily-post","d":{"post_id":99}}
+{"version":2,"timestamp":"2026-04-05T14:07:30Z","content_id":"civitai:image:12345","action":"posted","requester":"daily-post","trace_id":"run-001","details":{"platform":"facebook","platform_id":"99"}}
 ```
 
-Оркестратор видит: `civitai:image:12345` → выбран → запощен в мессенджер (msg #42) → запощен в соцсеть (post #99). Полная цепочка восстановлена.
+Оркестратор видит: `civitai:image:12345` → выбран → запощен в мессенджер (#42) → запощен в соцсеть (#99). Полная цепочка восстановлена через `trace_id`.
 
 ## Ключевые особенности
 
 - **Ноль общего состояния** — без баз данных, очередей, межсерверной коммуникации
 - **Append-only JSONL** — атомарная запись, нет риска повреждения, тривиальный парсинг
-- **5 обязательных полей** — `v`, `t`, `cid`, `act`, `req` — это весь протокол
+- **Самодокументируемость** — читаемые имена полей: `content_id`, `action`, `requester`, `timestamp`, `version`
 - **Универсальный Content ID** — формат `source:type:id` прослеживает контент через любое количество серверов
-- **Стандартные инструменты** — `get_trail` и `mark_trail` — одинаковый API везде
-- **Автологирование** — инструменты публикации логируют автоматически при передаче `cid` и `req`
-- **Ноль зависимостей** — только стандартная библиотека, никаких внешних пакетов
+- **Корреляция трейсов** — опциональный `trace_id` связывает записи между серверами в один пайплайн
+- **10 стандартных действий** — `fetched`, `selected`, `posted`, `failed`, `skipped`, `retrying`, `transformed`, `moderated`, `expired`, `delivered`
+- **Стандартные инструменты** — `get_trail`, `mark_trail`, `get_trail_stats` — одинаковый API везде
+- **Стандартизированные details** — типы ошибок, трекинг стоимости, метаданные контента, ID платформ
+- **Автологирование** — инструменты публикации логируют автоматически при передаче `content_id` и `requester`
+- **Ноль зависимостей** — только стандартная библиотека
+- **Готовность к OTel** — опциональный мост для экспорта записей как OpenTelemetry-спанов
+- **Обратная совместимость с v1** — читает v1 логи прозрачно, миграция не нужна
 
 ## Быстрый старт
 
@@ -74,18 +79,23 @@ trail = Trail("./data")
 
 # Залогировать событие
 await trail.append(
-    cid="civitai:image:12345",
-    act="posted",
-    req="daily-post",
-    d={"message_id": 42}
+    content_id="civitai:image:12345",
+    action="posted",
+    requester="daily-post",
+    details={"platform": "telegram", "platform_id": "42"},
+    trace_id="run-001"
 )
 
 # Запросить лог
-entries = await trail.query(cid="civitai:image:12345")
+entries, total = await trail.query(content_id="civitai:image:12345")
 
 # Проверить, уже опубликовано?
 if await trail.is_used("civitai:image:12345"):
     print("Уже опубликовано, пропускаем")
+
+# Статистика пайплайна
+stats = await trail.stats(requester="daily-post")
+print(f"Опубликовано: {stats['by_action'].get('posted', 0)}")
 ```
 
 ### TypeScript
@@ -96,71 +106,100 @@ import { Trail } from "./trail";
 const trail = new Trail("./data");
 
 // Залогировать событие
-trail.append("civitai:image:12345", "posted", "daily-post", { message_id: 42 });
+trail.append("civitai:image:12345", "posted", "daily-post", {
+  details: { platform: "telegram", platform_id: "42" },
+  trace_id: "run-001",
+});
 
 // Запросить лог
-const entries = trail.query({ cid: "civitai:image:12345" });
+const { entries, total } = trail.query({ content_id: "civitai:image:12345" });
 
 // Проверить, уже опубликовано?
 if (trail.isUsed("civitai:image:12345")) {
   console.log("Уже опубликовано, пропускаем");
 }
+
+// Статистика пайплайна
+const stats = trail.stats("daily-post");
+console.log(`Опубликовано: ${stats.by_action.posted ?? 0}`);
 ```
 
 ## Схема записи
 
 ```jsonl
-{"v":1,"t":"2026-04-05T14:07:00Z","cid":"civitai:image:12345","act":"posted","req":"daily-post","d":{"message_id":42}}
+{"version":2,"timestamp":"2026-04-05T14:07:00.123Z","content_id":"civitai:image:12345","action":"posted","requester":"daily-post","trace_id":"run-001","details":{"platform":"telegram","platform_id":"42"}}
 ```
 
-| Поле  | Тип      | Обязательное | Описание |
-|-------|----------|:---:|-------------|
-| `v`   | `int`    | да | Версия протокола (всегда `1`) |
-| `t`   | `string` | да | Временная метка ISO 8601 |
-| `cid` | `string` | да | Content ID: `source:type:id` |
-| `act` | `string` | да | Действие: `fetched`, `selected`, `posted`, `failed`, `skipped` |
-| `req` | `string` | да | Реквестер (ID воркфлоу/таска) |
-| `d`   | `object` | нет | Платформенные детали |
+| Поле | Тип | Обязательное | Описание |
+|------|-----|:---:|----------|
+| `version` | `int` | да | Версия протокола (`2`) |
+| `timestamp` | `string` | да | ISO 8601 в UTC с миллисекундами |
+| `content_id` | `string` | да | Content ID: `source:type:id` |
+| `action` | `string` | да | Действие (см. ниже) |
+| `requester` | `string` | да | ID воркфлоу/таска |
+| `details` | `object` | нет | Платформенные данные со [стандартными подполями](SPEC.ru.md#поле-details) |
+| `trace_id` | `string` | нет | Группирует записи между серверами в один трейс |
+| `entry_id` | `string` | нет | Уникальный ID записи (для цепочек причинности) |
+| `caused_by` | `string` | нет | `entry_id` вызвавшей записи |
+| `tags` | `string[]` | нет | Свободные метки для фильтрации |
 
 ## Стандартные действия
 
-| Действие   | Когда |
-|------------|-------|
-| `fetched`  | Контент получен из источника (список кандидатов) |
-| `selected` | Выбран из кандидатов оркестратором |
-| `posted`   | Успешно опубликован |
-| `failed`   | Попытка не удалась (причина в `d.error`) |
-| `skipped`  | Намеренно пропущен (причина в `d.reason`) |
+| Действие | Когда |
+|----------|-------|
+| `fetched` | Контент получен из источника |
+| `selected` | Выбран из кандидатов |
+| `posted` | Успешно опубликован |
+| `failed` | Попытка не удалась (`details.error` — структурированная ошибка) |
+| `skipped` | Намеренно пропущен (`details.reason` объясняет) |
+| `retrying` | Планируется повтор (`details.attempt` — номер попытки) |
+| `transformed` | Контент модифицирован (ресайз, перевод) |
+| `moderated` | Прошёл/не прошёл модерацию (`details.result`: `"pass"` / `"reject"`) |
+| `expired` | Больше не актуален (TTL, удалён) |
+| `delivered` | Доставка подтверждена (вебхук, прочтение) |
 
 ## Стандартные инструменты
 
 Каждый TRAIL-совместимый MCP-сервер предоставляет:
 
 | Инструмент | Назначение |
-|------------|------------|
-| `get_trail(cid?, act?, req?, limit?)` | Запросить лог с фильтрами |
-| `mark_trail(cid, act, req, d?)` | Явно записать событие |
+|------------|-----------|
+| `get_trail(content_id?, action?, requester?, trace_id?, tags?, since?, limit?, offset?)` | Запрос лога. Возвращает `{entries, total}` |
+| `mark_trail(content_id, action, requester, details?, trace_id?, tags?)` | Явная запись |
+| `get_trail_stats(requester?, since?)` | Сводная статистика |
 
-Инструменты публикации (`send_photo`, `publish_post` и т.д.) принимают опциональные `cid` + `req` для автоматического логирования.
+Инструменты публикации принимают опциональные `content_id` + `requester` + `trace_id` для автоматического логирования.
 
-## Дедупликация
+## Обнаружение (Discovery)
 
-Дедупликацией занимается оркестратор, не серверы:
+Серверы объявляют поддержку TRAIL через capabilities:
 
+```json
+{
+  "capabilities": {
+    "trail": {
+      "version": 2,
+      "actions": ["fetched", "selected", "posted", "failed", "skipped"],
+      "auto_log_tools": ["send_photo", "send_message", "publish_post"]
+    }
+  }
+}
 ```
-1. Перед получением  → get_trail(req="daily-post") на сервере-источнике
-2. Перед постингом   → get_trail(cid="civitai:image:12345") на сервере-назначении
-3. Если уже запощено → пропускаем
-```
 
-Серверы МОГУТ предоставлять параметры-удобства (например, `exclude_used=true`), которые используют trail внутри.
+## Миграция с v1
+
+TRAIL v2 **полностью обратно совместим** с v1:
+- v2 серверы читают v1 записи через маппинг полей (`v`→`version`, `t`→`timestamp`, `cid`→`content_id`, `act`→`action`, `req`→`requester`, `d`→`details`)
+- Миграция файлов не нужна
+- Новые записи всегда в формате v2
 
 ## Внедрение TRAIL в ваш MCP-сервер
 
 1. Скопируйте [`trail.py`](examples/python/trail.py) или [`trail.ts`](examples/typescript/trail.ts) в проект
-2. Добавьте инструменты `get_trail` и `mark_trail`
-3. Добавьте опциональные `cid` + `req` в инструменты публикации
-4. Готово
+2. Добавьте инструменты `get_trail`, `mark_trail` и `get_trail_stats`
+3. Добавьте `content_id` + `requester` + `trace_id` в инструменты публикации
+4. Объявите TRAIL в capabilities сервера
+5. Готово
 
 Полная спецификация: **[SPEC.md](SPEC.md)** | **[SPEC.ru.md](SPEC.ru.md)**
 
@@ -168,36 +207,36 @@ if (trail.isUsed("civitai:image:12345")) {
 
 | Альтернатива | Почему TRAIL лучше |
 |---|---|
-| **Общая база данных** | Связанность, сложность деплоя, единая точка отказа. MCP-серверы изолированы по дизайну. |
-| **Очередь сообщений** | Избыточно. LLM-оркестратор уже связывает все серверы — он И ЕСТЬ шина сообщений. |
-| **OpenTelemetry** | Трейсит *вызовы* инструментов, а не *семантику* контента. Не знает что куда запостили. |
-| **ActivityPub** | Создан для социальной федерации, не для оркестрации AI-инструментов. Огромный оверхед. |
+| **Общая БД** | Связанность, сложность деплоя, единая точка отказа. MCP-серверы изолированы. |
+| **Очередь сообщений** | Избыточно. LLM-оркестратор и есть шина сообщений. |
+| **OpenTelemetry** | Трейсит *вызовы*, не *семантику* контента. У TRAIL есть [OTel-мост](SPEC.md#opentelemetry-bridge). |
+| **ActivityPub** | Для социальной федерации, не для AI-оркестрации. |
 
 ## FAQ
 
-**В: Почему короткие имена полей (`cid`, `act`, `req`)?**
-О: Логи растут бесконечно. Короткие ключи экономят ~40% места. Лог читает машина, не человек.
+**В: Почему читаемые имена вместо коротких v1 (`cid`, `act`)?**
+О: Протокол на десятилетия должен быть самодокументируемым. `content_id` понятен сразу. Накладные расходы ничтожны.
 
-**В: Что с ротацией логов?**
-О: При ~50 записях/день один файл справляется годами. Переименуйте в `trail.2026.jsonl` и начните новый если нужно.
+**В: v1 поддерживается?**
+О: Да. v2 читает v1 прозрачно. Миграция не нужна.
 
-**В: Свои поля?**
-О: Всё кладите в `d`. Корневые поля зарезервированы для протокола.
+**В: Все необязательные поля нужны?**
+О: Нет. Пять обязательных полей — это протокол. Остальное для продвинутых сценариев.
 
-**В: Оркестратор упал посреди пайплайна?**
-О: Trail показывает где именно остановился. Продолжайте с последнего успешного шага.
+**В: Оркестратор упал?**
+О: `trace_id` покажет все записи запуска. Действие последней — где продолжить.
 
 ## Исследование существующих решений
 
-Мы тщательно искали существующие решения перед созданием TRAIL. На апрель 2026 года **протокола кросс-MCP трекинга контента не существует**:
+На апрель 2026 **протокола кросс-MCP трекинга контента не существует**:
 
-- **MCP Spec** — отсутствие коммуникации между серверами by design
-- **CA-MCP** (arXiv 2601.11595) — shared context store, но для транзиентного стейта, не для персистентных логов
-- **lokryn/mcp-log** — JSONL аудит-логирование, но для операций (SOC2/HIPAA), не для контента
-- **IBM ContextForge** — прокси-гейтвей с OTel, не семантика контента
-- **OpenTelemetry для MCP** — трейсит вызовы, не "что куда запостили"
+- **MCP Spec** — нет межсерверной коммуникации by design
+- **CA-MCP** (arXiv 2601.11595) — shared context для транзиентного стейта
+- **lokryn/mcp-log** — аудит-лог операций (SOC2/HIPAA)
+- **IBM ContextForge** — прокси с OTel
+- **OpenTelemetry для MCP** — трейсит вызовы, не контент
 
-TRAIL заполняет этот пробел.
+Системы observability (Langfuse, OpenInference, LangSmith) фокусируются на LLM-трейсинге, не на кросс-серверном жизненном цикле контента. TRAIL заполняет этот пробел.
 
 ## MCP-серверы с поддержкой TRAIL
 
@@ -206,22 +245,22 @@ TRAIL заполняет этот пробел.
 | [civitai-mcp-ultimate](https://github.com/timoncool/civitai-mcp-ultimate) | Civitai API — модели, картинки, видео, промпты | Python |
 | [telegram-api-mcp](https://github.com/timoncool/telegram-api-mcp) | Telegram Bot API v9.6 — полное покрытие | TypeScript |
 
-*Внедрили TRAIL в свой сервер? Откройте PR чтобы добавить его сюда.*
+*Внедрили TRAIL? Откройте PR.*
 
 ---
 
-## Другие open source проекты от [@timoncool](https://github.com/timoncool)
+## Другие open source от [@timoncool](https://github.com/timoncool)
 
 | Проект | Описание |
 |--------|----------|
 | [civitai-mcp-ultimate](https://github.com/timoncool/civitai-mcp-ultimate) | Civitai MCP-сервер — поиск, просмотр, скачивание, анализ |
-| [telegram-api-mcp](https://github.com/timoncool/telegram-api-mcp) | Telegram Bot API MCP-сервер — полное покрытие v9.6, rate limiting, circuit breaker |
-| [SuperCaption_Qwen3-VL](https://github.com/timoncool/SuperCaption_Qwen3-VL) | Генерация описаний изображений на Qwen Vision |
-| [Foundation-Music-Lab](https://github.com/timoncool/Foundation-Music-Lab) | Генерация музыки с встроенным таймлайн-редактором |
-| [Wan2GP_wan.best](https://github.com/timoncool/Wan2GP_wan.best) | Быстрый AI-видеогенератор — Wan 2.1/2.2, Hunyuan, LTX, Flux |
-| [VibeVoice_ASR_portable_ru](https://github.com/timoncool/VibeVoice_ASR_portable_ru) | Портативное распознавание речи для русского |
-| [Qwen3-TTS_portable_rus](https://github.com/timoncool/Qwen3-TTS_portable_rus) | Портативный TTS с клонированием голоса |
-| [ScreenSavy.com](https://github.com/timoncool/ScreenSavy.com) | Превращает любой дисплей в динамичный ambient-экран |
+| [telegram-api-mcp](https://github.com/timoncool/telegram-api-mcp) | Telegram Bot API MCP-сервер — полное покрытие v9.6 |
+| [SuperCaption_Qwen3-VL](https://github.com/timoncool/SuperCaption_Qwen3-VL) | Генерация описаний изображений |
+| [Foundation-Music-Lab](https://github.com/timoncool/Foundation-Music-Lab) | Генерация музыки с таймлайн-редактором |
+| [Wan2GP_wan.best](https://github.com/timoncool/Wan2GP_wan.best) | AI-видеогенератор |
+| [VibeVoice_ASR_portable_ru](https://github.com/timoncool/VibeVoice_ASR_portable_ru) | Распознавание речи |
+| [Qwen3-TTS_portable_rus](https://github.com/timoncool/Qwen3-TTS_portable_rus) | TTS с клонированием голоса |
+| [ScreenSavy.com](https://github.com/timoncool/ScreenSavy.com) | Ambient-экран |
 
 ---
 
