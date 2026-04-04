@@ -1,4 +1,4 @@
-"""trail.py — TRAIL Protocol v2 (Tracking Records Across Isolated Logs)
+"""trail.py — TRAIL Protocol v2.1 (Tracking Records Across Isolated Logs)
 
 Reference implementation for Python MCP servers.
 https://github.com/timoncool/trail-spec
@@ -6,7 +6,7 @@ https://github.com/timoncool/trail-spec
 Usage:
     from trail import Trail
 
-    trail = Trail("./data")
+    trail = Trail("./data", server="my-mcp-server")
     await trail.append(content_id="civitai:image:12345", action="posted", requester="daily-post")
     entries, total = await trail.query(content_id="civitai:image:12345")
 """
@@ -24,9 +24,10 @@ class Trail:
     FILENAME = "trail.jsonl"
     VERSION = 2
 
-    def __init__(self, data_dir: str | Path):
+    def __init__(self, data_dir: str | Path, server: str | None = None):
         self._path = Path(data_dir) / self.FILENAME
         self._lock = asyncio.Lock()
+        self._server = server
         self._path.parent.mkdir(parents=True, exist_ok=True)
 
     async def append(
@@ -36,6 +37,7 @@ class Trail:
         requester: str,
         details: dict[str, Any] | None = None,
         trace_id: str | None = None,
+        server: str | None = None,
         entry_id: str | None = None,
         caused_by: str | None = None,
         tags: list[str] | None = None,
@@ -44,10 +46,11 @@ class Trail:
 
         Args:
             content_id: Content ID in format source:type:id (e.g. "civitai:image:12345")
-            action: Action — fetched, selected, posted, failed, skipped, retrying, etc.
+            action: Action — fetched, selected, posted, failed, skipped, delegated, evaluated, guarded, etc.
             requester: Requester — workflow or scheduler task ID
             details: Optional platform-specific details
             trace_id: Optional trace correlation ID (groups entries across servers)
+            server: Optional server name (overrides constructor default)
             entry_id: Optional unique entry identifier
             caused_by: Optional entry_id of the causing entry
             tags: Optional free-form labels for filtering
@@ -59,6 +62,9 @@ class Trail:
             "action": action,
             "requester": requester,
         }
+        srv = server or self._server
+        if srv:
+            entry["server"] = srv
         if details is not None:
             entry["details"] = details
         if trace_id:
@@ -79,9 +85,10 @@ class Trail:
     async def query(
         self,
         content_id: str | None = None,
-        action: str | None = None,
+        action: str | list[str] | None = None,
         requester: str | None = None,
         trace_id: str | None = None,
+        server: str | None = None,
         tags: list[str] | None = None,
         since: str | None = None,
         limit: int = 50,
@@ -91,9 +98,10 @@ class Trail:
 
         Args:
             content_id: Filter by content ID (exact match or prefix)
-            action: Filter by action
+            action: Filter by action (string or list of strings for multi-action filtering)
             requester: Filter by requester
             trace_id: Filter by trace ID
+            server: Filter by server name
             tags: Filter entries that have ALL specified tags
             since: ISO 8601 timestamp — only return entries after this time
             limit: Max entries to return (0 = unlimited)
@@ -101,6 +109,8 @@ class Trail:
         """
         if not self._path.exists():
             return [], 0
+
+        action_set = {action} if isinstance(action, str) else set(action) if action else None
 
         entries = []
         with open(self._path, "r", encoding="utf-8") as f:
@@ -115,11 +125,13 @@ class Trail:
 
                 if content_id and not entry.get("content_id", "").startswith(content_id):
                     continue
-                if action and entry.get("action") != action:
+                if action_set and entry.get("action") not in action_set:
                     continue
                 if requester and entry.get("requester") != requester:
                     continue
                 if trace_id and entry.get("trace_id") != trace_id:
+                    continue
+                if server and entry.get("server") != server:
                     continue
                 if tags and not all(t in entry.get("tags", []) for t in tags):
                     continue

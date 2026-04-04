@@ -1,12 +1,12 @@
 /**
- * trail.ts — TRAIL Protocol v2 (Tracking Records Across Isolated Logs)
+ * trail.ts — TRAIL Protocol v2.1 (Tracking Records Across Isolated Logs)
  *
  * Reference implementation for TypeScript MCP servers.
  * https://github.com/timoncool/trail-spec
  *
  * Usage:
  *   import { Trail } from "./trail";
- *   const trail = new Trail("./data");
+ *   const trail = new Trail("./data", "my-mcp-server");
  *   trail.append("civitai:image:12345", "posted", "daily-post", { details: { platform: "telegram" } });
  *   const { entries, total } = trail.query({ content_id: "civitai:image:12345" });
  */
@@ -22,6 +22,7 @@ export interface TrailEntry {
   requester: string;
   details?: Record<string, unknown>;
   trace_id?: string;
+  server?: string;
   entry_id?: string;
   caused_by?: string;
   tags?: string[];
@@ -30,12 +31,14 @@ export interface TrailEntry {
 export interface TrailQuery {
   /** Filter by content ID (exact match or prefix) */
   content_id?: string;
-  /** Filter by action */
-  action?: string;
+  /** Filter by action (string or array for multi-action filtering) */
+  action?: string | string[];
   /** Filter by requester */
   requester?: string;
   /** Filter by trace ID */
   trace_id?: string;
+  /** Filter by server name */
+  server?: string;
   /** Filter entries that have ALL specified tags */
   tags?: string[];
   /** ISO 8601 timestamp — only return entries after this time */
@@ -49,6 +52,7 @@ export interface TrailQuery {
 export interface TrailAppendOptions {
   details?: Record<string, unknown>;
   trace_id?: string;
+  server?: string;
   entry_id?: string;
   caused_by?: string;
   tags?: string[];
@@ -71,18 +75,20 @@ export class Trail {
   private static readonly FILENAME = "trail.jsonl";
   private static readonly VERSION = 2;
   private readonly filePath: string;
+  private readonly serverName?: string;
 
-  constructor(dataDir: string) {
+  constructor(dataDir: string, server?: string) {
     this.filePath = join(dataDir, Trail.FILENAME);
+    this.serverName = server;
     mkdirSync(dirname(this.filePath), { recursive: true });
   }
 
   /**
    * Append an event to the trail.
    * @param content_id Content ID in format source:type:id
-   * @param action Action — fetched, selected, posted, failed, skipped, retrying, etc.
+   * @param action Action — fetched, selected, posted, failed, delegated, evaluated, guarded, etc.
    * @param requester Requester — workflow or scheduler task ID
-   * @param options Optional: details, trace_id, entry_id, caused_by, tags
+   * @param options Optional: details, trace_id, server, entry_id, caused_by, tags
    */
   append(
     content_id: string,
@@ -97,6 +103,8 @@ export class Trail {
       action,
       requester,
     };
+    const srv = options?.server ?? this.serverName;
+    if (srv) entry.server = srv;
     if (options?.details) entry.details = options.details;
     if (options?.trace_id) entry.trace_id = options.trace_id;
     if (options?.entry_id) entry.entry_id = options.entry_id;
@@ -114,6 +122,7 @@ export class Trail {
       action,
       requester,
       trace_id,
+      server,
       tags,
       since,
       limit = 50,
@@ -121,6 +130,10 @@ export class Trail {
     } = q;
 
     if (!existsSync(this.filePath)) return { entries: [], total: 0 };
+
+    const actionSet = action
+      ? new Set(Array.isArray(action) ? action : [action])
+      : null;
 
     const lines = readFileSync(this.filePath, "utf-8")
       .split("\n")
@@ -131,9 +144,10 @@ export class Trail {
       try {
         const entry: TrailEntry = JSON.parse(line);
         if (content_id && !entry.content_id.startsWith(content_id)) continue;
-        if (action && entry.action !== action) continue;
+        if (actionSet && !actionSet.has(entry.action)) continue;
         if (requester && entry.requester !== requester) continue;
         if (trace_id && entry.trace_id !== trace_id) continue;
+        if (server && entry.server !== server) continue;
         if (tags && !tags.every((t) => entry.tags?.includes(t))) continue;
         if (since && entry.timestamp < since) continue;
         matched.push(entry);

@@ -60,12 +60,14 @@
 - **Самодокументируемость** — читаемые имена полей: `content_id`, `action`, `requester`, `timestamp`, `version`
 - **Универсальный Content ID** — формат `source:type:id` прослеживает контент через любое количество серверов
 - **Корреляция трейсов** — опциональный `trace_id` связывает записи между серверами в один пайплайн
-- **10 стандартных действий** — `fetched`, `selected`, `posted`, `failed`, `skipped`, `retrying`, `transformed`, `moderated`, `expired`, `delivered`
+- **15 стандартных действий** — `fetched`, `selected`, `posted`, `failed`, `skipped`, `retrying`, `transformed`, `moderated`, `expired`, `delivered`, `delegated`, `received`, `evaluated`, `guarded`, `acknowledged`
+- **Мульти-агентные паттерны** — делегация, оценка, гардрейлы и human-in-the-loop через стандартные действия и цепочки `caused_by`
 - **Стандартные инструменты** — `get_trail`, `mark_trail`, `get_trail_stats` — одинаковый API везде
-- **Стандартизированные details** — типы ошибок, трекинг стоимости, метаданные контента, ID платформ
+- **Стандартизированные details** — типы ошибок, трекинг стоимости, метаданные контента, ID платформ, результаты гардрейлов, оценки качества
 - **Автологирование** — инструменты публикации логируют автоматически при передаче `content_id` и `requester`
+- **3 уровня соответствия** — Basic (5 полей + 2 инструмента), Standard (+ трейсинг, автологирование, discovery), Full (+ цепочки причинности, OTel-экспорт, все 15 действий)
 - **Ноль зависимостей** — только стандартная библиотека
-- **Готовность к OTel** — опциональный мост для экспорта записей как OpenTelemetry-спанов
+- **Нативный маппинг в OTel** — `caused_by` → `parentSpanId`, `server` → `service.name`, полное дерево спанов в любом OTel-бэкенде
 
 ## Быстрый старт
 
@@ -126,7 +128,7 @@ console.log(`Опубликовано: ${stats.by_action.posted ?? 0}`);
 ## Схема записи
 
 ```jsonl
-{"version":2,"timestamp":"2026-04-05T14:07:00.123Z","content_id":"civitai:image:12345","action":"posted","requester":"daily-post","trace_id":"run-001","details":{"platform":"telegram","platform_id":"42"}}
+{"version":2,"timestamp":"2026-04-05T14:07:00.123Z","content_id":"civitai:image:12345","action":"posted","requester":"daily-post","server":"telegram-mcp","trace_id":"run-001","details":{"platform":"telegram","platform_id":"42"}}
 ```
 
 | Поле | Тип | Обязательное | Описание |
@@ -138,8 +140,9 @@ console.log(`Опубликовано: ${stats.by_action.posted ?? 0}`);
 | `requester` | `string` | да | ID воркфлоу/таска |
 | `details` | `object` | нет | Платформенные данные со [стандартными подполями](SPEC.ru.md#поле-details) |
 | `trace_id` | `string` | нет | Группирует записи между серверами в один трейс |
+| `server` | `string` | нет | MCP-сервер, записавший эту запись (авто) |
 | `entry_id` | `string` | нет | Уникальный ID записи (для цепочек причинности) |
-| `caused_by` | `string` | нет | `entry_id` вызвавшей записи |
+| `caused_by` | `string` | нет | `entry_id` вызвавшей записи (маппится в OTel `parentSpanId`) |
 | `tags` | `string[]` | нет | Свободные метки для фильтрации |
 
 ## Стандартные действия
@@ -156,6 +159,11 @@ console.log(`Опубликовано: ${stats.by_action.posted ?? 0}`);
 | `moderated` | Прошёл/не прошёл модерацию (`details.result`: `"pass"` / `"reject"`) |
 | `expired` | Больше не актуален (TTL, удалён) |
 | `delivered` | Доставка подтверждена (вебхук, прочтение) |
+| `delegated` | Задача делегирована другому агенту (`details.delegate_to`, `details.delegation_reason`) |
+| `received` | Контент получен от другого агента (`details.received_from`) |
+| `evaluated` | Оценка качества (`details.score`: 0.0–1.0, `details.evaluator`) |
+| `guarded` | Проверка гардрейлом (`details.guardrail`, `details.passed`, `details.reason`) |
+| `acknowledged` | Подтверждение человеком (`details.acknowledged_by`, `details.decision`) |
 
 ## Стандартные инструменты
 
@@ -178,8 +186,18 @@ console.log(`Опубликовано: ${stats.by_action.posted ?? 0}`);
   "capabilities": {
     "trail": {
       "version": 2,
-      "actions": ["fetched", "selected", "posted", "failed", "skipped"],
-      "auto_log_tools": ["send_photo", "send_message", "publish_post"]
+      "server": "telegram-mcp",
+      "conformance": "standard",
+      "actions": ["fetched", "selected", "posted", "failed", "skipped", "guarded"],
+      "auto_log_tools": ["send_photo", "send_message", "publish_post"],
+      "supports": {
+        "trace_id": true,
+        "entry_id": true,
+        "caused_by": true,
+        "tags": true,
+        "server_field": true
+      },
+      "retention_days": 90
     }
   }
 }
@@ -187,21 +205,35 @@ console.log(`Опубликовано: ${stats.by_action.posted ?? 0}`);
 
 ## Внедрение TRAIL в ваш MCP-сервер
 
+**Basic (Уровень 0)** — дедупликация и простой трекинг:
 1. Скопируйте [`trail.py`](examples/python/trail.py) или [`trail.ts`](examples/typescript/trail.ts) в проект
-2. Добавьте инструменты `get_trail`, `mark_trail` и `get_trail_stats`
-3. Добавьте `content_id` + `requester` + `trace_id` в инструменты публикации
-4. Объявите TRAIL в capabilities сервера
-5. Готово
+2. Добавьте инструменты `get_trail` и `mark_trail`
+3. Готово
+
+**Standard (Уровень 1)** — продакшн-пайплайны:
+4. Задайте `server` в конструкторе Trail
+5. Добавьте `get_trail_stats`
+6. Добавьте `content_id` + `requester` + `trace_id` в инструменты публикации
+7. Объявите TRAIL в capabilities с `"conformance": "standard"`
+
+**Full (Уровень 2)** — мульти-агентная наблюдаемость:
+8. Включите автогенерацию `entry_id` и поддержку `caused_by`
+9. Реализуйте все 15 стандартных действий
+10. Добавьте экспорт в OTel
 
 Полная спецификация: **[SPEC.md](SPEC.md)** | **[SPEC.ru.md](SPEC.ru.md)**
 
 ## Почему не...
 
-| Альтернатива | Почему TRAIL лучше |
+| Альтернатива | Почему TRAIL лучше для трекинга контента |
 |---|---|
 | **Общая БД** | Связанность, сложность деплоя, единая точка отказа. MCP-серверы изолированы. |
 | **Очередь сообщений** | Избыточно. LLM-оркестратор и есть шина сообщений. |
 | **OpenTelemetry** | Трейсит *вызовы*, не *семантику* контента. У TRAIL есть [OTel-мост](SPEC.md#opentelemetry-bridge). |
+| **IETF AAT** | Фокус на комплаенсе (хэш-цепочки, ECDSA). TRAIL — developer-first, легковесный. |
+| **Langfuse / LangSmith** | Платформы LLM-обсервабилити — трейсят API-вызовы, не жизненный цикл контента. Требуют облако/self-host. |
+| **Google A2A** | Протокол коммуникации агентов, не формат логирования. Другой уровень. |
+| **Agent Protocol** | Определяет API агентов, не формат логов. |
 | **ActivityPub** | Для социальной федерации, не для AI-оркестрации. |
 
 ## FAQ
@@ -215,6 +247,12 @@ console.log(`Опубликовано: ${stats.by_action.posted ?? 0}`);
 **В: Оркестратор упал?**
 О: `trace_id` покажет все записи запуска. Действие последней — где продолжить.
 
+**В: Что такое уровни соответствия?**
+О: Три уровня — Basic (5 полей + 2 инструмента), Standard (+ трейсинг, `server`, автологирование), Full (+ цепочки причинности, все 15 действий, OTel-экспорт). Начинайте с Basic.
+
+**В: Мульти-агентные пайплайны?**
+О: Пары `delegated`/`received` + цепочки `caused_by` + поле `server`. Оркестратор восстанавливает полный DAG. См. [SPEC.ru.md — Мульти-агентные паттерны](SPEC.ru.md#мульти-агентные-паттерны).
+
 ## Исследование существующих решений
 
 На апрель 2026 **протокола кросс-MCP трекинга контента не существует**:
@@ -223,9 +261,13 @@ console.log(`Опубликовано: ${stats.by_action.posted ?? 0}`);
 - **CA-MCP** (arXiv 2601.11595) — shared context для транзиентного стейта
 - **lokryn/mcp-log** — аудит-лог операций (SOC2/HIPAA)
 - **IBM ContextForge** — прокси с OTel
-- **OpenTelemetry для MCP** — трейсит вызовы, не контент
+- **OpenTelemetry GenAI** — семантические конвенции для LLM-вызовов (статус Development), не жизненный цикл контента
+- **IETF AAT** (draft-sharif-agent-audit-trail) — комплаенс-аудит с хэш-цепочками, нет семантики контента
+- **Google A2A** — протокол коммуникации агентов с расширением трассировки, не формат логов
+- **Langfuse / LangSmith / Arize Phoenix** — платформы LLM-обсервабилити, трейсят API-вызовы
+- **Agent Protocol** (agentprotocol.ai) — REST API для агентов, не формат логов
 
-Системы observability (Langfuse, OpenInference, LangSmith) фокусируются на LLM-трейсинге, не на кросс-серверном жизненном цикле контента. TRAIL заполняет этот пробел.
+TRAIL заполняет уникальную нишу: **легковесный, без зависимостей трекинг контента с поддержкой мульти-агентных паттернов** — ни один другой протокол не совмещает семантику контента (`content_id`), zero shared state и агентные паттерны (делегация, оценка, гардрейлы).
 
 ## MCP-серверы с поддержкой TRAIL
 

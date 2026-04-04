@@ -27,7 +27,7 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{0,31}$",
       "description": "Action performed on the content.",
-      "examples": ["fetched", "selected", "posted", "failed", "skipped", "retrying", "transformed", "moderated", "expired", "delivered"]
+      "examples": ["fetched", "selected", "posted", "failed", "skipped", "retrying", "transformed", "moderated", "expired", "delivered", "delegated", "received", "evaluated", "guarded", "acknowledged"]
     },
     "requester": {
       "type": "string",
@@ -35,6 +35,13 @@
       "maxLength": 128,
       "description": "The workflow, scheduled task, or user that initiated this action.",
       "examples": ["daily-post", "user-request", "content-pipeline-v2"]
+    },
+    "server": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+      "description": "Identifier of the MCP server that wrote this entry.",
+      "examples": ["telegram-mcp", "civitai-mcp", "optimizer-mcp", "safety-mcp"]
     },
     "details": {
       "type": "object",
@@ -174,6 +181,47 @@
           "type": "integer",
           "minimum": 0,
           "description": "How long the action took in milliseconds."
+        },
+        "delegate_to": {
+          "type": "string",
+          "description": "Target server/agent for delegated actions."
+        },
+        "delegation_reason": {
+          "type": "string",
+          "description": "Why the delegation happened."
+        },
+        "received_from": {
+          "type": "string",
+          "description": "Source server/agent for received actions."
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Evaluation score (0.0-1.0) for evaluated actions."
+        },
+        "evaluator": {
+          "type": "string",
+          "description": "Evaluation method.",
+          "examples": ["llm-judge", "heuristic", "human"]
+        },
+        "guardrail": {
+          "type": "string",
+          "description": "Guardrail name for guarded actions.",
+          "examples": ["nsfw-filter", "copyright-check", "pii-detector"]
+        },
+        "passed": {
+          "type": "boolean",
+          "description": "Whether the guardrail passed."
+        },
+        "acknowledged_by": {
+          "type": "string",
+          "description": "Who acknowledged for acknowledged actions."
+        },
+        "decision": {
+          "type": "string",
+          "enum": ["approve", "reject"],
+          "description": "Human decision for acknowledged actions."
         }
       },
       "additionalProperties": true
