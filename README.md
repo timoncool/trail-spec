@@ -4,7 +4,7 @@
 
 <p align="center">
   An open protocol for cross-MCP server content tracking and deduplication.<br>
-  <a href="SPEC.md">Spec (EN)</a> · <a href="SPEC.ru.md">Spec (RU)</a> · <a href="examples/">Examples</a>
+  <a href="SPEC.md">Spec (EN)</a> · <a href="SPEC.ru.md">Spec (RU)</a> · <a href="examples/">Examples</a> · <a href="README.ru.md">README на русском</a>
 </p>
 
 ---
@@ -222,6 +222,18 @@ TRAIL fills this gap.
 | [VibeVoice_ASR_portable_ru](https://github.com/timoncool/VibeVoice_ASR_portable_ru) | Portable speech recognition for Russian |
 | [Qwen3-TTS_portable_rus](https://github.com/timoncool/Qwen3-TTS_portable_rus) | Portable TTS with voice cloning |
 | [ScreenSavy.com](https://github.com/timoncool/ScreenSavy.com) | Transform any display into a dynamic ambient screen |
+
+---
+
+## Star History
+
+<a href="https://star-history.com/#timoncool/trail-spec&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=timoncool/trail-spec&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=timoncool/trail-spec&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=timoncool/trail-spec&type=Date" />
+ </picture>
+</a>
 
 ---
 
