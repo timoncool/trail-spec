@@ -336,11 +336,11 @@ TRAIL fills a unique gap: **lightweight, zero-dependency content tracking with m
 
 ## Star History
 
-<a href="https://star-history.com/#timoncool/trail-spec&Date">
+<a href="https://www.star-history.com/?repos=timoncool%2Ftrail-spec&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=timoncool/trail-spec&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=timoncool/trail-spec&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=timoncool/trail-spec&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=timoncool/trail-spec&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=timoncool/trail-spec&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=timoncool/trail-spec&type=date&legend=top-left" />
  </picture>
 </a>
 
