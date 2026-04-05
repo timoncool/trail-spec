@@ -343,7 +343,6 @@ TRAIL fills a unique gap: **lightweight, zero-dependency content tracking with m
    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=timoncool/trail-spec&type=date&legend=top-left" />
  </picture>
 </a>
-
 ---
 
 <p align="center">
