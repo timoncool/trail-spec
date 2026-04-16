@@ -7,6 +7,13 @@
   <a href="SPEC.md">Spec (EN)</a> · <a href="SPEC.ru.md">Spec (RU)</a> · <a href="examples/">Examples</a> · <a href="README.ru.md">README на русском</a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/timoncool/trail-spec/stargazers"><img src="https://img.shields.io/github/stars/timoncool/trail-spec?style=flat-square" alt="Stars" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/timoncool/trail-spec?style=flat-square" alt="License" /></a>
+  <img src="https://img.shields.io/badge/TRAIL-v2.1-6366f1?style=flat-square" alt="TRAIL v2.1" />
+  <img src="https://img.shields.io/badge/MCP-compatible-purple?style=flat-square" alt="MCP" />
+</p>
+
 ---
 
 ## The Problem
@@ -319,18 +326,15 @@ TRAIL fills a unique gap: **lightweight, zero-dependency content tracking with m
 
 ---
 
-## Other Open Source by [@timoncool](https://github.com/timoncool)
+## Other Projects by [@timoncool](https://github.com/timoncool)
 
 | Project | Description |
 |---------|-------------|
-| [civitai-mcp-ultimate](https://github.com/timoncool/civitai-mcp-ultimate) | Ultimate Civitai MCP server — search, browse, download, analyze |
-| [telegram-api-mcp](https://github.com/timoncool/telegram-api-mcp) | Telegram Bot API MCP server — full v9.6 coverage, rate limiting, circuit breaker |
-| [SuperCaption_Qwen3-VL](https://github.com/timoncool/SuperCaption_Qwen3-VL) | Image description generator based on Qwen Vision Language Models |
-| [Foundation-Music-Lab](https://github.com/timoncool/Foundation-Music-Lab) | Music generation with built-in timeline editor |
-| [Wan2GP_wan.best](https://github.com/timoncool/Wan2GP_wan.best) | Fast AI video generator — Wan 2.1/2.2, Hunyuan, LTX, Flux |
-| [VibeVoice_ASR_portable_ru](https://github.com/timoncool/VibeVoice_ASR_portable_ru) | Portable speech recognition for Russian |
-| [Qwen3-TTS_portable_rus](https://github.com/timoncool/Qwen3-TTS_portable_rus) | Portable TTS with voice cloning |
-| [ScreenSavy.com](https://github.com/timoncool/ScreenSavy.com) | Transform any display into a dynamic ambient screen |
+| [ACE-Step Studio](https://github.com/timoncool/ACE-Step-Studio) | AI music studio — songs, vocals, covers, videos |
+| [VideoSOS](https://github.com/timoncool/videosos) | AI video production in the browser |
+| [Bulka](https://github.com/timoncool/Bulka) | Live-coding music platform |
+| [GitLife](https://github.com/timoncool/gitlife) | Your life in weeks — interactive calendar |
+| [ScreenSavy.com](https://github.com/timoncool/ScreenSavy.com) | Ambient screen generator |
 
 ---
 
@@ -349,9 +353,9 @@ I build open-source software and do AI research. Most of what I create is free a
 
 <a href="https://www.star-history.com/?repos=timoncool%2Ftrail-spec&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=timoncool/trail-spec&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=timoncool/trail-spec&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=timoncool/trail-spec&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=timoncool/trail-spec&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=timoncool/trail-spec&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=timoncool/trail-spec&type=date&legend=top-left" />
  </picture>
 </a>
 ---
